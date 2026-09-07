@@ -1,0 +1,36 @@
+# Unreal Engine generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Visual Studio
+.vs/
+*.VC.db
+*.VC.opendb
+*.suo
+*.user
+*.userprefs
+
+# Build products
+*.sln
+*.xcodeproj
+*.xcworkspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Rider
+.idea/
+
+# Unreal autosaves / backups
+Autosaves/
+Backup/
