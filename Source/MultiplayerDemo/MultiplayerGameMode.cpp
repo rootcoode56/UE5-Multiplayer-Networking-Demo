@@ -79,7 +79,7 @@ void AMultiplayerGameMode::CheckPlayersReadyForTravel()
 			PlayerController->IsLocalController() ||
 			PlayerController->HasClientLoadedCurrentWorld();
 
-		if (bPlayerReady)
+		if (!bPlayerReady)
 		{
 			bAllPlayersReady = false;
 		}
