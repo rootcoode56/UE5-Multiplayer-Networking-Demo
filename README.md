@@ -199,21 +199,17 @@ NetTestMap
 
 ### Multiplayer Lobby
 
-_Add screenshot here._
-
-### Replicated Gameplay
-
-_Add screenshot here._
+<img width="1917" height="1077" alt="Lobby" src="https://github.com/user-attachments/assets/7b0eeeb1-b145-4a4b-9c66-21bd93224ef3" />
 
 ### Per-Player Networked State
 
-_Add screenshot here._
+<img width="1917" height="1077" alt="Separate State" src="https://github.com/user-attachments/assets/a923e697-f6af-4d39-9585-546d322f4117" />
 
 ## Demo
 
 A short gameplay and networking demonstration will be added here.
 
-**Demo Video:** Coming soon.
+**Demo Video:** [Click Here](https://youtu.be/h46SVSHWcTY)
 
 ## Project Structure
 
