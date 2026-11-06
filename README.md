@@ -1,238 +1,125 @@
-# UE5 Multiplayer Networking Demo
+## 📐 Networking & Systems Architecture
 
-A focused **Unreal Engine 5.8.2 multiplayer networking demo** built primarily in **C++**, demonstrating client-server architecture, server authority, RPCs, replication, session management, synchronized travel, and PlayerState synchronization.
+The project follows a **listen-server architecture** with server-authoritative gameplay. Clients handle input and local interaction detection, while the server validates requests, controls gameplay state changes, and replicates the results to connected players.
 
-The project intentionally keeps gameplay simple so the focus remains on **multiplayer architecture, networking concepts, validation, synchronization, and reliability**.
+### 1. Server-Authoritative Interaction Validation
 
-## Key Features
-
-- Room-code-based LAN session creation, discovery, and joining
-- Listen-server / client multiplayer architecture
-- Session lifecycle management with failure handling
-- Seamless synchronized travel with player-readiness checks
-- Server-authoritative gameplay interactions
-- Server-side distance validation
-- Client → Server RPC communication
-- Replicated switch using **RepNotify**
-- Server-authoritative replicated pickup system
-- Per-player replicated pickup count using **PlayerState**
-- Event-driven multiplayer HUD updates
-- HOST POV / CLIENT POV identification
-- Connection, join, and session failure handling
-
-## Networking Architecture
+The interaction system separates client-side target detection from server-side gameplay authorization.
 
 ```text
-Client Input
-    ↓
-Local Interaction Trace
-    ↓
-Owned Character
-    ↓
-Server RPC
-    ↓
-Server Validation
-    ↓
-Authoritative State Change
-    ↓
-Replication
-    ↓
-Client Presentation
+Client presses E
+       ↓
+Local Camera Trace (600 units)
+       ↓
+Interaction Target Detected
+       ↓
+Client sends Server RPC
+       ↓
+Server validates target and distance
+       ↓
+Authorized Interaction
+       ↓
+Server modifies gameplay state
+       ↓
+Replication to connected clients
 ```
 
-Clients request gameplay actions, but the **server remains authoritative**.
+**Interaction validation:**
 
-Client requests are independently validated by the server before any gameplay state is modified.
+- Client interaction trace range: **600 units**
+- Server-authorized interaction range: **300 units**
+- The server independently checks the interaction target and player distance.
+- Invalid or out-of-range requests are rejected.
+- Clients cannot directly modify authoritative gameplay state.
 
-## Replicated Gameplay
+This demonstrates server-side gameplay validation rather than trusting client requests.
 
-### Replicated Switch
+### 2. Replicated Gameplay State
 
-```text
-Press E
-    ↓
-Server RPC
-    ↓
-Server validates interaction
-    ↓
-Server validates distance
-    ↓
-bIsActive changes
-    ↓
-RepNotify
-    ↓
-Switch state synchronizes across clients
-```
+The project implements replicated gameplay actors using Unreal Engine's property replication system.
 
-The client can request an interaction from a longer trace distance, while the server enforces a shorter authoritative interaction range.
+**Replicated Switch**
 
-```text
-Client trace range: 600 units
-Server validation range: 300 units
-```
+- Uses `ReplicatedUsing` to track the switch's active state.
+- Implements `OnRep_IsActive()` for client-side visual synchronization.
+- The server controls state changes.
+- The switch visually tilts approximately 35 degrees when activated.
 
-This demonstrates that the client does not have final authority over gameplay interactions.
+**Replicated Pickup**
 
-### Replicated Pickup
+- Clients request pickup collection through a Server RPC.
+- The server validates the pickup interaction.
+- The server increments the collecting player's `PickupCount`.
+- The server destroys the pickup actor.
+- Actor destruction and updated player state replicate across the network.
 
-```text
-Press E
-    ↓
-Server RPC
-    ↓
-Server validates pickup
-    ↓
-PlayerState PickupCount++
-    ↓
-Server destroys pickup
-    ↓
-State and actor removal replicate
-```
+### 3. Per-Player State Synchronization
 
-The client never directly destroys the pickup.
+A custom `AMultiplayerPlayerState` manages individual player data.
 
-Each player maintains an independent replicated pickup count through their own `PlayerState`.
+- Implements a replicated `PickupCount` variable using `ReplicatedUsing`.
+- Uses `GetLifetimeReplicatedProps()` for property replication.
+- Implements `OnRep_PickupCount()` to respond to replicated count changes.
+- Maintains independent pickup counts for each connected player.
 
 Example:
 
 ```text
-HOST POV
-PICKUPS: 1
-
-CLIENT POV
-PICKUPS: 2
+HOST POV             CLIENT POV
+PICKUPS: 1           PICKUPS: 2
 ```
 
-## Core C++ Architecture
+Each player's pickup count is maintained independently rather than using a shared global counter.
 
-```text
-MultiplayerSessionSubsystem
-→ Create / Find / Join / Destroy sessions
+### 4. Event-Driven Multiplayer UI
 
-MultiplayerGameMode
-→ Player readiness + synchronized ServerTravel
+The HUD communicates with gameplay systems through dynamic multicast delegates.
 
-MultiplayerGameInstance
-→ UI-to-session system bridge
+- Implements `OnPickupCountChanged` for pickup-count updates.
+- Updates the local HUD when the server changes player state or when replicated state arrives.
+- Avoids continuous Tick-based polling for pickup-count updates.
+- Displays HOST POV / CLIENT POV identification and individual pickup counts.
+- Includes loading indicators and user-facing session and connection failure messages.
 
-MultiplayerCharacter
-→ Input, interaction traces, Server RPCs
+### 5. Multiplayer Session & Travel Architecture
 
-MultiplayerPlayerState
-→ Replicated per-player PickupCount
+The session system is built around `UGameInstanceSubsystem` and `OnlineSubsystemNull`.
 
-ReplicatedSwitch
-→ RepNotify-based replicated state
+**Session Management**
+- LAN session creation and discovery.
+- Automatic six-character room-code generation.
+- Advertised `ROOM_CODE` session settings.
+- Case-insensitive room-code matching.
+- Session joining, destruction, and recreation.
+- Asynchronous session delegate management.
+- Connection and session failure handling.
 
-ReplicatedPickup
-→ Server-authoritative pickup, collection, and destruction
-```
+**Synchronized Travel**
+- Server-side player-readiness checks.
+- Uses `HasClientLoadedCurrentWorld()` as part of the readiness workflow.
+- Configures seamless travel through `bUseSeamlessTravel`.
+- Uses server-controlled `ServerTravel` to transition connected players into `NetTestMap`.
+- Includes a stabilization period before initiating travel.
 
-## Session & Travel Flow
+### 6. Core C++ Architecture
 
-```text
-Host
-  ↓
-Create LAN Session
-  ↓
-Generate Room Code
-  ↓
-Client enters Room Code
-  ↓
-Find LAN Sessions
-  ↓
-Match Room Code
-  ↓
-Join Session
-  ↓
-Client connects to Host
-  ↓
-Server detects required players
-  ↓
-Readiness checks
-  ↓
-Stabilization period
-  ↓
-Seamless ServerTravel
-  ↓
-NetTestMap
-```
+| Class | Responsibility |
+|---|---|
+| `UMultiplayerSessionSubsystem` | LAN session creation, discovery, joining, and destruction |
+| `UMultiplayerGameInstance` | UI-to-session integration |
+| `AMultiplayerGameMode` | Player readiness and server-controlled travel |
+| `AMultiplayerCharacter` | Enhanced Input, interaction traces, and Server RPCs |
+| `AMultiplayerPlayerState` | Replicated per-player pickup count |
+| `AReplicatedSwitch` | RepNotify-based switch state synchronization |
+| `AReplicatedPickup` | Server-authoritative pickup collection and destruction |
 
-## What This Demonstrates
+### 7. Development & Testing
 
-- Unreal Engine C++ multiplayer development
-- Client/server responsibility separation
-- Listen-server architecture
-- Server authority
-- Actor ownership
-- Client → Server RPCs
-- Server-side gameplay validation
-- Replicated properties
-- RepNotify
-- Replicated actor destruction
-- PlayerState replication
-- Per-player networked state
-- Event-driven UI updates
-- Enhanced Input
-- OnlineSubsystem session management
-- Room-code matchmaking
-- Session lifecycle management
-- Seamless multiplayer travel
-- Client readiness synchronization
-- Multiplayer failure handling
-- Network timing and synchronization debugging
-
-## Tech Stack
-
-**Unreal Engine 5.8.2 · C++ · Blueprints · UMG · Enhanced Input · OnlineSubsystemNull · RPCs · RepNotify · PlayerState · Seamless Travel**
-
-## Controls
-
-| Input | Action |
-|-------|--------|
-| WASD | Move |
-| Mouse | Look |
-| Space | Jump |
-| E | Interact |
-
-## Screenshots
-
-### Multiplayer Lobby
-
-<img width="1917" height="1077" alt="Lobby" src="https://github.com/user-attachments/assets/7b0eeeb1-b145-4a4b-9c66-21bd93224ef3" />
-
-### Per-Player Networked State
-
-<img width="1917" height="1077" alt="Separate State" src="https://github.com/user-attachments/assets/a923e697-f6af-4d39-9585-546d322f4117" />
-<img width="800" height="450" alt="ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/3588a5f9-7b03-446f-b0f6-305f30f61dd1" />
-
-
-## Demo
-
-A short gameplay and networking demonstration will be added here.
-
-**Demo Video:** [Click Here](https://youtu.be/h46SVSHWcTY)
-
-## Project Structure
-
-```text
-MultiplayerDemo/
-├── Config/
-├── Content/
-├── Source/
-│   └── MultiplayerDemo/
-├── MultiplayerDemo.uproject
-├── README.md
-├── .gitignore
-└── .gitattributes
-```
-
-Generated Unreal Engine folders such as `Binaries`, `Intermediate`, `Saved`, and `.vs` are excluded from the repository.
-
-## Author
-
-**Asif Tanjim**
-
-Gameplay / Multiplayer Systems Developer
-
-Focused on **Unreal Engine C++ gameplay programming and multiplayer systems**.
+- Developed using **Unreal Engine 5.8.2 and C++**.
+- Tested using separate standalone host and client instances.
+- Verified LAN session creation, room-code matchmaking, and client joining.
+- Tested replicated gameplay interactions between connected players.
+- Verified independent per-player pickup counts.
+- Tested server-side interaction distance validation.
+- Validated synchronized multiplayer travel.
+- Compiled successfully using the **Development Editor x64** configuration.
